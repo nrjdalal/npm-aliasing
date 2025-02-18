@@ -1,0 +1,46 @@
+name: auto
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: '0 0 * * *'
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+permissions:
+  contents: write
+
+jobs:
+  update-templates:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Publish Packages
+        run: |
+          npm config set '//registry.npmjs.org/:_authToken' "${NPM_TOKEN}"
+          # ~ alias create-tsrouter-app
+          bunx gitpick@latest https://github.com/TanStack/create-tsrouter-app . --overwrite
+          bun i && bun run build && rm -rf bun.lock
+          bunx json -I -f package.json -e 'this.name="create-router-app"'
+          npm publish || true
+          # ~ alias create-tsrouter-app
+          bunx json -I -f package.json -e 'this.name="create-start-app"'
+          npm publish || true
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
