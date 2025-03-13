@@ -5,7 +5,7 @@ on:
     branches:
       - main
   schedule:
-    - cron: '0 */8 * * *'
+    - cron: "0 */8 * * *"
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
@@ -16,11 +16,6 @@ jobs:
   update-templates:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
