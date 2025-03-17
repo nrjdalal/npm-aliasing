@@ -35,11 +35,12 @@ jobs:
           bunx json -I -f package.json -e 'this.name="create-router-app"'
           bunx json -I -f package.json -e 'delete this.scripts'
           bunx json -I -f package.json -e 'delete this.packageManager'
-          sed -i '' 's/create-tsrouter-app/create-router-app/g' README.md
+          sed -i 's/create-tsrouter-app/create-router-app/g' README.md
+          cat README.md
           npm publish || true
           # ~ alias create-tsrouter-app
           bunx json -I -f package.json -e 'this.name="create-start-app"'
-          sed -i '' 's/create-router-app/create-start-app/g' README.md
+          sed -i 's/create-router-app/create-start-app/g' README.md
           npm publish || true
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
