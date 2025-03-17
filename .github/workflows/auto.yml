@@ -33,6 +33,7 @@ jobs:
           bunx gitpick@latest https://github.com/TanStack/create-tsrouter-app . --overwrite
           bun i && bun run build && rm -rf bun.lock
           bunx json -I -f package.json -e 'this.name="create-router-app"'
+          bunx json -I -f package.json -e 'this.version="0.9.3"'
           bunx json -I -f package.json -e 'delete this.scripts'
           bunx json -I -f package.json -e 'delete this.packageManager'
           sed -i 's/create-tsrouter-app/create-router-app/g' README.md
