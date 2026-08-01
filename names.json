@@ -1,0 +1,36 @@
+{
+  "$schema": "./names.schema.json",
+  "mirror": [],
+  "reserve": [
+    {
+      "name": "artifacto",
+      "description": "Pull request artifacts your storage cannot read.",
+      "homepage": "https://artifacto.sh",
+      "keywords": ["artifacts", "encryption", "github", "pull-request"]
+    },
+    {
+      "name": "artifacto-sh",
+      "description": "Pull request artifacts your storage cannot read.",
+      "homepage": "https://artifacto.sh",
+      "keywords": ["artifacts", "encryption", "github", "pull-request"]
+    },
+    {
+      "name": "dalonic",
+      "description": "An AI-native product studio.",
+      "homepage": "https://dalonic.com",
+      "keywords": ["agents", "ai", "developer-tools", "studio"]
+    },
+    {
+      "name": "dalonic-ai",
+      "description": "An AI-native product studio.",
+      "homepage": "https://dalonic.com",
+      "keywords": ["agents", "ai", "developer-tools", "studio"]
+    },
+    {
+      "name": "turnly",
+      "description": "Online multiplayer turn-based games.",
+      "homepage": "https://turnly.gg",
+      "keywords": ["games", "multiplayer", "turn-based"]
+    }
+  ]
+}
