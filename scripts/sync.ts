@@ -42,12 +42,26 @@ const only = process.argv.find((a) => a.startsWith('--only='))?.slice('--only='.
 /** Write built packages here instead of publishing, so they can be tested. */
 const out = process.argv.find((a) => a.startsWith('--out='))?.slice('--out='.length)
 
-const run = (cmd: string, args: string[], cwd?: string) => {
-  const r = spawnSync(cmd, args, { cwd, encoding: 'utf8' })
+/**
+ * `interactive` hands our stdio to the child. npm's 2FA flow needs a TTY to
+ * open a browser and wait for the challenge; piped stdio makes it print a URL
+ * nobody can answer and fail with EOTP.
+ */
+const run = (
+  cmd: string,
+  args: string[],
+  { cwd, interactive = false }: { cwd?: string; interactive?: boolean } = {},
+) => {
+  const r = spawnSync(cmd, args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: interactive ? 'inherit' : 'pipe',
+  })
   if (r.status !== 0) {
-    throw new Error(`${cmd} ${args.join(' ')} failed (${r.status})\n${r.stderr || r.stdout}`)
+    const detail = r.stderr || r.stdout
+    throw new Error(`${cmd} ${args.join(' ')} failed (${r.status})${detail ? `\n${detail}` : ''}`)
   }
-  return r.stdout.trim()
+  return r.stdout?.trim() ?? ''
 }
 
 /** Latest published version, or null when the name has never been published. */
@@ -89,7 +103,10 @@ const ship = (dir: string, name: string, version: string) => {
     console.log(`built ${name}@${version} at ${dest}`)
     return
   }
-  run('npm', ['publish', '--access', 'public', ...(dryRun ? ['--dry-run'] : [])], dir)
+  run('npm', ['publish', '--access', 'public', ...(dryRun ? ['--dry-run'] : [])], {
+    cwd: dir,
+    interactive: true,
+  })
   console.log(`${dryRun ? 'would publish' : 'published'} ${name}@${version}`)
 }
 
@@ -107,7 +124,7 @@ const publishMirror = (entry: Mirror, version: string) =>
     run('npm', ['pack', `${entry.upstream}@${version}`, '--pack-destination', tmp])
     const tarball = readdirSync(tmp).find((f) => f.endsWith('.tgz'))
     if (!tarball) throw new Error(`npm pack produced no tarball for ${entry.upstream}@${version}`)
-    run('tar', ['-xzf', tarball], tmp)
+    run('tar', ['-xzf', tarball], { cwd: tmp })
 
     const dir = join(tmp, 'package')
     const manifestPath = join(dir, 'package.json')
