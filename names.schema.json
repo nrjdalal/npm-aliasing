@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "npm-aliasing config",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "mirror": {
+      "description": "Names held by republishing an upstream package's tarball under them.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "upstream"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The npm name we hold and publish to."
+          },
+          "upstream": {
+            "type": "string",
+            "description": "The npm name whose published tarball is mirrored."
+          },
+          "description": {
+            "type": "string",
+            "description": "Overrides the upstream description on the mirror."
+          }
+        }
+      }
+    },
+    "reserve": {
+      "description": "Names held by publishing a stub that points at the real project.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "description", "homepage"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "description": "The npm name to hold." },
+          "description": { "type": "string", "description": "What the project is." },
+          "homepage": { "type": "string", "description": "Where the real project lives." },
+          "keywords": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

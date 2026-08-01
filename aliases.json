@@ -1,9 +1,0 @@
-{
-  "$schema": "./aliases.schema.json",
-  "aliases": [
-    {
-      "name": "create-router-app",
-      "upstream": "create-tsrouter-app"
-    }
-  ]
-}

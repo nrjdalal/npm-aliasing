@@ -1,16 +1,20 @@
 #!/usr/bin/env bun
 /**
- * Mirrors an upstream npm package under a name we hold, so the name stays
- * claimed and keeps working instead of rotting or being squatted.
+ * Holds npm names so they cannot be squatted, two ways:
  *
- * We repack the published upstream tarball rather than building from source.
- * Source layouts change (upstream became a pnpm monorepo and silently broke
- * this repo for a year); a published tarball is a stable contract.
+ * - mirror:  republish an upstream package's tarball under a name we hold.
+ *            We repack the published tarball rather than building from source,
+ *            because source layouts change (upstream became a pnpm monorepo and
+ *            silently broke this repo for a year) while a tarball is a contract.
+ *
+ * - reserve: publish a stub that points at the real project, for names we own
+ *            but have not shipped code under yet.
  */
 
 import { spawnSync } from 'node:child_process'
 import {
   cpSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -23,12 +27,19 @@ import { join, resolve } from 'node:path'
 
 const REGISTRY = 'https://registry.npmjs.org'
 const REWRITABLE = /\.(js|mjs|cjs|ts|mts|cts|json|md|txt)$/
+const REPO = 'nrjdalal/npm-aliasing'
+const AUTHOR = {
+  name: 'Neeraj Dalal',
+  email: 'admin@nrjdalal.com',
+  url: 'https://nrjdalal.com',
+}
 
-type Alias = { name: string; upstream: string; description?: string }
+type Mirror = { name: string; upstream: string; description?: string }
+type Reserve = { name: string; description: string; homepage: string; keywords?: string[] }
 
 const dryRun = process.argv.includes('--dry-run')
 const only = process.argv.find((a) => a.startsWith('--only='))?.slice('--only='.length)
-/** Write the built package here instead of publishing, so it can be tested. */
+/** Write built packages here instead of publishing, so they can be tested. */
 const out = process.argv.find((a) => a.startsWith('--out='))?.slice('--out='.length)
 
 const run = (cmd: string, args: string[], cwd?: string) => {
@@ -55,9 +66,9 @@ const walk = (dir: string): string[] =>
   })
 
 /**
- * Rewrite the upstream name to the alias name inside text files. Upstream
- * embeds its own name in help output and in the `cli({ name })` call, so a
- * plain repack would introduce a package that calls itself something else.
+ * Rewrite the upstream name to ours inside text files. Upstream embeds its own
+ * name in help output and in the `cli({ name })` call, so a plain repack would
+ * produce a package that calls itself something else.
  */
 const rebrand = (root: string, from: string, to: string) => {
   for (const file of walk(root)) {
@@ -68,27 +79,49 @@ const rebrand = (root: string, from: string, to: string) => {
   }
 }
 
-const publishAlias = async (alias: Alias, version: string) => {
+/** Publish the prepared directory, or divert it to --out for inspection. */
+const ship = (dir: string, name: string, version: string) => {
+  if (out) {
+    const dest = resolve(out, name)
+    rmSync(dest, { recursive: true, force: true })
+    mkdirSync(resolve(out), { recursive: true })
+    cpSync(dir, dest, { recursive: true })
+    console.log(`built ${name}@${version} at ${dest}`)
+    return
+  }
+  run('npm', ['publish', '--access', 'public', ...(dryRun ? ['--dry-run'] : [])], dir)
+  console.log(`${dryRun ? 'would publish' : 'published'} ${name}@${version}`)
+}
+
+const withTempDir = async (fn: (dir: string) => Promise<void> | void) => {
   const tmp = mkdtempSync(join(tmpdir(), 'npm-aliasing-'))
   try {
-    run('npm', ['pack', `${alias.upstream}@${version}`, '--pack-destination', tmp])
+    await fn(tmp)
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
+}
+
+const publishMirror = (entry: Mirror, version: string) =>
+  withTempDir((tmp) => {
+    run('npm', ['pack', `${entry.upstream}@${version}`, '--pack-destination', tmp])
     const tarball = readdirSync(tmp).find((f) => f.endsWith('.tgz'))
-    if (!tarball) throw new Error(`npm pack produced no tarball for ${alias.upstream}@${version}`)
+    if (!tarball) throw new Error(`npm pack produced no tarball for ${entry.upstream}@${version}`)
     run('tar', ['-xzf', tarball], tmp)
 
     const dir = join(tmp, 'package')
     const manifestPath = join(dir, 'package.json')
 
     // Rebrand before touching the manifest so our own fields survive verbatim.
-    rebrand(dir, alias.upstream, alias.name)
+    rebrand(dir, entry.upstream, entry.name)
 
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
-    manifest.name = alias.name
+    manifest.name = entry.name
     manifest.version = version
-    if (alias.description) manifest.description = alias.description
-    manifest.repository = { type: 'git', url: 'git+https://github.com/nrjdalal/npm-aliasing.git' }
-    manifest.homepage = 'https://github.com/nrjdalal/npm-aliasing#readme'
-    manifest.bugs = 'https://github.com/nrjdalal/npm-aliasing/issues'
+    if (entry.description) manifest.description = entry.description
+    manifest.repository = { type: 'git', url: `git+https://github.com/${REPO}.git` }
+    manifest.homepage = `https://github.com/${REPO}#readme`
+    manifest.bugs = `https://github.com/${REPO}/issues`
     // A mirror must never run upstream's lifecycle scripts on install.
     delete manifest.scripts
     delete manifest.devDependencies
@@ -100,58 +133,117 @@ const publishAlias = async (alias: Alias, version: string) => {
     writeFileSync(
       join(dir, 'README.md'),
       [
-        `# ${alias.name}`,
+        `# ${entry.name}`,
         '',
-        `\`${alias.name}\` is an alias of [\`${alias.upstream}\`](https://www.npmjs.com/package/${alias.upstream}) at version \`${version}\`.`,
+        `\`${entry.name}\` is an alias of [\`${entry.upstream}\`](https://www.npmjs.com/package/${entry.upstream}) at version \`${version}\`.`,
         'It is the upstream tarball republished under this name, so the two behave identically.',
         '',
-        `The name is held so it cannot be squatted. Published from [nrjdalal/npm-aliasing](https://github.com/nrjdalal/npm-aliasing).`,
+        `The name is held so it cannot be squatted. Published from [${REPO}](https://github.com/${REPO}).`,
         '',
-        `Prefer the upstream package: \`npx ${alias.upstream}\`.`,
+        `Prefer the upstream package: \`npx ${entry.upstream}\`.`,
         '',
       ].join('\n'),
     )
 
-    if (out) {
-      const dest = resolve(out, alias.name)
-      rmSync(dest, { recursive: true, force: true })
-      cpSync(dir, dest, { recursive: true })
-      console.log(`built ${alias.name}@${version} at ${dest}`)
-      return
-    }
+    ship(dir, entry.name, version)
+  })
 
-    run('npm', ['publish', '--access', 'public', ...(dryRun ? ['--dry-run'] : [])], dir)
-    console.log(`${dryRun ? 'would publish' : 'published'} ${alias.name}@${version}`)
-  } finally {
-    rmSync(tmp, { recursive: true, force: true })
-  }
+const publishReserve = (entry: Reserve) =>
+  withTempDir((tmp) => {
+    const dir = join(tmp, 'package')
+    mkdirSync(dir)
+
+    writeFileSync(
+      join(dir, 'package.json'),
+      `${JSON.stringify(
+        {
+          name: entry.name,
+          version: '0.0.1',
+          description: entry.description,
+          keywords: entry.keywords ?? [],
+          homepage: entry.homepage,
+          repository: { type: 'git', url: `git+https://github.com/${REPO}.git` },
+          bugs: `https://github.com/${REPO}/issues`,
+          license: 'MIT',
+          author: AUTHOR,
+          files: ['README.md'],
+        },
+        null,
+        2,
+      )}\n`,
+    )
+
+    writeFileSync(
+      join(dir, 'README.md'),
+      [
+        `# ${entry.name}`,
+        '',
+        entry.description,
+        '',
+        `This name is held for [${entry.homepage.replace(/^https?:\/\//, '')}](${entry.homepage}).`,
+        'No code ships under it yet, so nothing here is meant to be installed.',
+        '',
+        `Reserved from [${REPO}](https://github.com/${REPO}).`,
+        '',
+      ].join('\n'),
+    )
+
+    ship(dir, entry.name, '0.0.1')
+  })
+
+const config = JSON.parse(readFileSync(new URL('../names.json', import.meta.url), 'utf8')) as {
+  mirror?: Mirror[]
+  reserve?: Reserve[]
 }
 
-const config = JSON.parse(readFileSync(new URL('../aliases.json', import.meta.url), 'utf8'))
-const aliases: Alias[] = config.aliases.filter((a: Alias) => !only || a.name === only)
+const matches = (name: string) => !only || name === only
+const mirrors = (config.mirror ?? []).filter((m) => matches(m.name))
+const reserves = (config.reserve ?? []).filter((r) => matches(r.name))
 
-if (!aliases.length) throw new Error(only ? `no alias named ${only}` : 'no aliases configured')
+if (only && !mirrors.length && !reserves.length) throw new Error(`no name configured: ${only}`)
+if (!mirrors.length && !reserves.length) console.log('nothing configured, nothing to do')
 
 let failed = false
 
-for (const alias of aliases) {
+const attempt = async (name: string, fn: () => Promise<void>) => {
   try {
-    const upstream = await latestVersion(alias.upstream)
-    if (!upstream) throw new Error(`upstream ${alias.upstream} has no published version`)
-
-    const current = await latestVersion(alias.name)
-    if (current === upstream) {
-      console.log(`${alias.name}@${current} already matches ${alias.upstream}, skipping`)
-      continue
-    }
-
-    console.log(`${alias.name}: ${current ?? 'unpublished'} -> ${alias.upstream}@${upstream}`)
-    await publishAlias(alias, upstream)
+    await fn()
   } catch (error) {
     failed = true
-    console.error(`${alias.name}: ${error instanceof Error ? error.message : error}`)
+    console.error(`${name}: ${error instanceof Error ? error.message : error}`)
   }
 }
 
-// Exit non-zero so a broken mirror is visible instead of a green check.
+for (const entry of mirrors) {
+  await attempt(entry.name, async () => {
+    const upstream = await latestVersion(entry.upstream)
+    if (!upstream) throw new Error(`upstream ${entry.upstream} has no published version`)
+
+    const current = await latestVersion(entry.name)
+    if (current === upstream) {
+      console.log(`${entry.name}@${current} already matches ${entry.upstream}, skipping`)
+      return
+    }
+
+    console.log(`${entry.name}: ${current ?? 'unpublished'} -> ${entry.upstream}@${upstream}`)
+    await publishMirror(entry, upstream)
+  })
+}
+
+for (const entry of reserves) {
+  await attempt(entry.name, async () => {
+    // A reserved name is claimed once. Later versions belong to the real
+    // project, so never overwrite whatever is already there.
+    const current = await latestVersion(entry.name)
+    if (current) {
+      console.log(`${entry.name}@${current} already held, skipping`)
+      return
+    }
+
+    console.log(`${entry.name}: unpublished -> reserving 0.0.1`)
+    await publishReserve(entry)
+  })
+}
+
+// Exit non-zero so a broken name shows up as a red check, not a green one.
 if (failed) process.exit(1)
