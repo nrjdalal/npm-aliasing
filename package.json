@@ -1,0 +1,17 @@
+{
+  "name": "npm-aliasing",
+  "private": true,
+  "type": "module",
+  "description": "Holds npm names by mirroring their upstream package, so they cannot be squatted.",
+  "repository": "nrjdalal/npm-aliasing",
+  "license": "MIT",
+  "author": {
+    "name": "Neeraj Dalal",
+    "email": "admin@nrjdalal.com",
+    "url": "https://nrjdalal.com"
+  },
+  "scripts": {
+    "sync": "bun scripts/sync.ts",
+    "sync:dry": "bun scripts/sync.ts --dry-run"
+  }
+}

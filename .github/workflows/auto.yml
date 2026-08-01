@@ -4,40 +4,32 @@ on:
   push:
     branches:
       - main
+  schedule:
+    # Upstream releases often; check daily so the alias never drifts far.
+    - cron: '0 6 * * *'
+  workflow_dispatch:
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  update-templates:
+  sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
+          registry-url: https://registry.npmjs.org
 
-      - name: Publish Packages
-        run: |
-          npm config set '//registry.npmjs.org/:_authToken' "${NPM_TOKEN}"
-          # ~ alias create-tsrouter-app
-          bunx gitpick@latest https://github.com/TanStack/create-tsrouter-app . --overwrite
-          bun i && bun run build && rm -rf bun.lock
-          bunx json -I -f package.json -e 'this.name="create-router-app"'
-          bunx json -I -f package.json -e 'delete this.scripts'
-          bunx json -I -f package.json -e 'delete this.packageManager'
-          sed -i 's/create-tsrouter-app/create-router-app/g' README.md
-          npm publish || true
-          # ~ alias create-tsrouter-app
-          bunx json -I -f package.json -e 'this.name="create-start-app"'
-          sed -i 's/create-router-app/create-start-app/g' README.md
-          npm publish || true
+      - name: Sync aliases
+        run: bun scripts/sync.ts
         env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
